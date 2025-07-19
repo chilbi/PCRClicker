@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<paths>
+    <!-- 外部存储的 files 目录 -->
+    <external-files-path
+        name="external_files"
+        path="." />
+
+    <!-- 内部存储的 files 目录 -->
+    <files-path
+        name="internal_files"
+        path="." />
+
+    <!-- 如果需要访问缓存目录 -->
+    <cache-path
+        name="cache"
+        path="." />
+
+    <!-- 如果需要访问外部存储的根目录 -->
+    <external-path
+        name="external"
+        path="." />
+</paths>

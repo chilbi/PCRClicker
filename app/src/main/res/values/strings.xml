@@ -1,0 +1,11 @@
+<resources>
+    <string name="app_name">PCR点击器</string>
+    <string name="foreground_service_rationale_floating_window">
+        此服务用于显示悬浮窗口，提供快捷访问功能。
+        需要前台服务权限以确保窗口保持可见。
+    </string>
+    <string name="accessibility_service_description">
+        此服务用于自动点击用户指定的屏幕位置。
+        需要无障碍辅助功能以实现点击操作。
+    </string>
+</resources>
