@@ -66,11 +66,6 @@ fun OperatorPanel(
     val summary = parsedScript.summary.collectAsState().value
     val isOn = parsedScript.isOn.collectAsState().value
 
-    val outlinedButtonColors = ButtonDefaults.outlinedButtonColors(
-        containerColor = MaterialTheme.colorScheme.surface,
-        contentColor = MaterialTheme.colorScheme.onSurface
-    )
-
     val iconButtonColors = IconButtonDefaults.iconButtonColors(
         containerColor = MaterialTheme.colorScheme.surface,
         contentColor = MaterialTheme.colorScheme.onSurface
@@ -137,7 +132,10 @@ fun OperatorPanel(
                         ) {
                             OutlinedButton(
                                 onClick = { parsedScript.handleClickOperate(settings) },
-                                colors = outlinedButtonColors,
+                                colors = ButtonDefaults.outlinedButtonColors(
+                                    containerColor = MaterialTheme.colorScheme.surface,
+                                    contentColor = MaterialTheme.colorScheme.onSurface
+                                ),
                                 border = BorderStroke(
                                     2.dp,
                                     if (isOn) MaterialTheme.colorScheme.primary
@@ -149,16 +147,34 @@ fun OperatorPanel(
                         }
                     } else if (currentOperate is Operate.Confirm) {
                         SecDisplay(currentOperate.sec)
-                        TextButton(
-                            onClick = { parsedScript.nextOperate() },
-                            colors = ButtonDefaults.textButtonColors(
-                                containerColor = MaterialTheme.colorScheme.tertiaryContainer,
-                                contentColor = MaterialTheme.colorScheme.onTertiaryContainer
-                            )
+                        BadgedBox(
+                            badge = {
+                                if (isOn) {
+                                    Badge(
+                                        modifier = Modifier.offset((-8).dp, 4.dp),
+                                        containerColor = MaterialTheme.colorScheme.tertiary
+                                    ) {
+                                        Text("OK")
+                                    }
+                                }
+                            }
                         ) {
-                            Text(
-                                text = currentOperate.message
-                            )
+                            OutlinedButton(
+                                onClick = { parsedScript.handleClickOperate(settings) },
+                                colors = ButtonDefaults.outlinedButtonColors(
+                                    containerColor = MaterialTheme.colorScheme.tertiaryContainer,
+                                    contentColor = MaterialTheme.colorScheme.onTertiaryContainer
+                                ),
+                                border = BorderStroke(
+                                    2.dp,
+                                    if (isOn) MaterialTheme.colorScheme.tertiary
+                                    else MaterialTheme.colorScheme.outline
+                                )
+                            ) {
+                                Text(
+                                    text = currentOperate.message
+                                )
+                            }
                         }
                     }
                 }

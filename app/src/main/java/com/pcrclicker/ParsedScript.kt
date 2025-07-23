@@ -85,11 +85,11 @@ class ParsedScript(
         if (operate is Operate.Click) {
             val position = operate.type.getPosition(settings)
             AutoClickService.getInstance()?.performClick(position.x, position.y)
-            if (_isOn.value) {
-                nextOperate()
-            } else {
-                _isOn.value = true
-            }
+        }
+        if (_isOn.value) {
+            nextOperate()
+        } else {
+            _isOn.value = true
         }
     }
 
