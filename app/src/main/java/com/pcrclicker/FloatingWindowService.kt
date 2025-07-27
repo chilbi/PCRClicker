@@ -94,7 +94,7 @@ class FloatingWindowService() : LifecycleService(), ViewModelStoreOwner, SavedSt
         instance = null
     }
 
-    fun addModalWindow(pauseActionCount: Int) {
+    fun pauseGame(pauseActionCount: Int) {
         val modal = floatingViews.get(MODAL_ID)
         var params: LayoutParams
         var composeView: View
@@ -124,7 +124,7 @@ class FloatingWindowService() : LifecycleService(), ViewModelStoreOwner, SavedSt
                 setViewTreeViewModelStoreOwner(this@FloatingWindowService)
                 setViewTreeSavedStateRegistryOwner(this@FloatingWindowService)
                 setContent {
-                    ModalWindow(this@FloatingWindowService::removeModalWindow)
+                    ModalWindow(this@FloatingWindowService::resumeGame)
                 }
             }
             floatingViews.put(MODAL_ID, composeView)
@@ -148,7 +148,7 @@ class FloatingWindowService() : LifecycleService(), ViewModelStoreOwner, SavedSt
         isPaused = true
     }
 
-    fun removeModalWindow() {
+    fun resumeGame() {
         val view = floatingViews.get(MODAL_ID)
         if (view != null) {
             windowManager.removeView(view)

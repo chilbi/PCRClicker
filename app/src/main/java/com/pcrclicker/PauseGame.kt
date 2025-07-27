@@ -1,7 +1,5 @@
 package com.pcrclicker
 
-import com.pcrclicker.PauseAction
-import com.pcrclicker.Position
 import kotlinx.coroutines.delay
 
 interface PauseGame  {
@@ -10,11 +8,11 @@ interface PauseGame  {
         pauseActionCount: Int,
         pauseAction: PauseAction,
         blankPosition: Position
-    ): Unit
+    )
 
     interface Callback {
-        fun onStart(): Unit
-        fun onEnd(): Unit
+        fun onStart()
+        fun onEnd()
     }
 
     companion object {
@@ -26,15 +24,21 @@ interface PauseGame  {
                 blankPosition: Position
             ) {
                 callback.onStart()
-                if (FloatingWindowService.isPaused) {
-                    FloatingWindowService.getInstance()!!.removeModalWindow()
+                val floatingWindowService = FloatingWindowService.getInstance()
+                val autoClickService = AutoClickService.getInstance()
+                if (floatingWindowService != null && autoClickService != null) {
+                    if (FloatingWindowService.isPaused) {
+                        floatingWindowService.resumeGame()
+                        if (pauseAction.closePauseWindowDelayTime > 0) {
+                            delay(pauseAction.closePauseWindowDelayTime)
+                        }
+                    }
+                    autoClickService.performClick(blankPosition.x, blankPosition.y)
+                    if (pauseAction.pauseBattleDelayTime > 0) {
+                        delay(pauseAction.pauseBattleDelayTime)
+                    }
+                    floatingWindowService.pauseGame(pauseActionCount)
                 }
-                delay(pauseAction.closePauseWindowDelayTime)
-                AutoClickService.getInstance()?.performClick(blankPosition.x, blankPosition.y)
-                if (pauseAction.pauseBattleDelayTime > 0) {
-                    delay(pauseAction.pauseBattleDelayTime)
-                }
-                FloatingWindowService.getInstance()?.addModalWindow(pauseActionCount)
                 callback.onEnd()
             }
         }
