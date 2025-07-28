@@ -1,6 +1,7 @@
 package com.pcrclicker.ui
 
 import android.widget.Toast
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.LocalActivity
 import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.background
@@ -98,6 +99,10 @@ fun EditorScreen(
         } finally {
             isAnalyzing = false
         }
+    }
+
+    BackHandler(modified) {
+        showDialog = true
     }
 
     if (showDialog) {
