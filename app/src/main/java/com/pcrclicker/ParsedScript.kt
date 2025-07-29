@@ -5,7 +5,8 @@ import kotlinx.coroutines.flow.asStateFlow
 
 class ParsedScript(
     val team: List<Chara>,
-    val lines: List<List<Operate>>
+    val lines: List<List<Operate>>,
+    val startSec: Int = 90
 ) {
     private val lineIndex = MutableStateFlow(0)
     private val operateIndex = MutableStateFlow(0)
@@ -80,6 +81,17 @@ class ParsedScript(
         }
     }
 
+    fun restart() {
+        if (!isStart() || _isOn.value) {
+            lineIndex.value = 0
+            currentLine.value = lines[lineIndex.value]
+            operateIndex.value = 0
+            _currentOperate.value = currentLine.value[operateIndex.value]
+            _summary.value = getSummary()
+            _isOn.value = false
+        }
+    }
+
     fun handleClickOperate(settings: Settings) {
         val operate = _currentOperate.value
         if (operate is Operate.Click) {
@@ -122,14 +134,25 @@ class ParsedScript(
             if (newOperates.isEmpty()) break
             newLines.add(newOperates)
         }
-        return ParsedScript(team, newLines)
+        return ParsedScript(team, newLines, sec)
     }
 
     private fun getSummary(): List<String> {
         val current = _currentOperate.value.getName(team)
         val currIndex = operateIndex.value
         val currLine = currentLine.value
-        var prev = currLine[0].getSeconds().toMinute() + " "
+        var prev: String
+        if (isFirstLine()) {
+            prev = "${startSec.toMinute()} 开始\n"
+        } else {
+            val prevLine = lines[lineIndex.value - 1]
+            prev = prevLine[0].getSeconds().toMinute()
+            for (i in 0 until prevLine.size) {
+                prev += " " + prevLine[i].getName(team)
+            }
+            prev += "\n"
+        }
+        prev += currLine[0].getSeconds().toMinute() + " "
         var next = ""
         if (currIndex > 0) {
             for (i in 0 until currIndex) {
@@ -306,8 +329,7 @@ fun analyzeSyntax(textLines: List<String>): ParsedScript? {
     }
     try {
         return ParsedScript(team.sortedByDescending { it.num }, lines)
-    } catch (e: Throwable) {
-    }
+    } catch (_: Throwable) {}
     return null
 }
 

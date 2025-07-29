@@ -34,6 +34,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -58,11 +59,16 @@ fun OperatorPanel(
     settings: Settings
 ) {
     val density = LocalDensity.current
-    val width = remember { mutableStateOf(225.dp) }
+    val width = remember { mutableStateOf(230.dp) }
     val isMin = remember { mutableStateOf(false) }
+    val confirmRestart = remember { mutableStateOf(false) }
     val currentOperate = parsedScript.currentOperate.collectAsState().value
     val summary = parsedScript.summary.collectAsState().value
     val isOn = parsedScript.isOn.collectAsState().value
+
+    LaunchedEffect(currentOperate) {
+        confirmRestart.value = false
+    }
 
     val iconButtonColors = IconButtonDefaults.iconButtonColors(
         containerColor = MaterialTheme.colorScheme.surface,
@@ -96,6 +102,23 @@ fun OperatorPanel(
                         MaterialTheme.shapes.large
                     )
             ) {
+                Text(
+                    text = buildAnnotatedString {
+                        append(summary[0])
+                        withStyle(SpanStyle(color = MaterialTheme.colorScheme.tertiary)) {
+                            append(summary[1])
+                        }
+                        append(summary[2])
+                    },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(4.dp, 0.dp, 32.dp, 4.dp)
+                        .background(MaterialTheme.colorScheme.surface, MaterialTheme.shapes.small)
+                        .padding(4.dp, 2.dp),
+                    color = MaterialTheme.colorScheme.onSurface,
+                    style = MaterialTheme.typography.bodySmall
+                )
+
                 Row(
                     modifier = Modifier.padding(4.dp)
                 ) {
@@ -108,6 +131,31 @@ fun OperatorPanel(
                         onClick = { parsedScript.handleClickSpeed(settings) },
                         text = "游戏加速"
                     )
+                    Spacer(modifier = Modifier.width(4.dp))
+                    BadgedBox(
+                        badge = {
+                            if (confirmRestart.value) {
+                                Badge(
+                                    modifier = Modifier.offset((-8).dp, (-4).dp),
+                                    containerColor = MaterialTheme.colorScheme.secondary
+                                ) {
+                                    Text("确定")
+                                }
+                            }
+                        }
+                    ) {
+                        MiniButton(
+                            onClick = {
+                                if (confirmRestart.value) {
+                                    parsedScript.restart()
+                                    confirmRestart.value = false
+                                } else {
+                                    confirmRestart.value = true
+                                }
+                            },
+                            text = "重新开始"
+                        )
+                    }
                 }
 
                 Row(
@@ -229,23 +277,6 @@ fun OperatorPanel(
                         )
                     }
                 }
-
-                Text(
-                    text = buildAnnotatedString {
-                        append(summary[0])
-                        withStyle(SpanStyle(color = MaterialTheme.colorScheme.tertiary)) {
-                            append(summary[1])
-                        }
-                        append(summary[2])
-                    },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(4.dp, 0.dp, 32.dp, 4.dp)
-                        .background(MaterialTheme.colorScheme.surface, MaterialTheme.shapes.small)
-                        .padding(4.dp, 2.dp),
-                    color = MaterialTheme.colorScheme.onSurface,
-                    style = MaterialTheme.typography.bodySmall
-                )
             }
 
             IconButton(
@@ -270,7 +301,7 @@ fun OperatorPanel(
                     .pointerInput(Unit) {
                         detectDragGestures { _, dragAmount ->
                             width.value = with(density) {
-                                (width.value + dragAmount.x.toDp()).coerceIn(225.dp, 450.dp)
+                                (width.value + dragAmount.x.toDp()).coerceIn(230.dp, 450.dp)
                             }
                         }
                     },
