@@ -22,12 +22,16 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.Help
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Rocket
 import androidx.compose.material.icons.filled.Save
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TextField
@@ -70,6 +74,7 @@ fun EditorScreen(
     fileViewModel: FileViewModel,
     servicesViewModel: ServicesViewModel,
     settingsViewModel: SettingsViewModel,
+    save: (fileName: String, content: String) -> Unit,
     onBack: () -> Unit
 ) {
     val settings by settingsViewModel.settings.collectAsState()
@@ -161,7 +166,7 @@ fun EditorScreen(
 
             Row(
                 modifier = Modifier
-                    .fillMaxSize()
+                    .weight(1f)
                     .background(MaterialTheme.colorScheme.surfaceVariant)
             ) {
                 LineNumColumn(lines.size, syntaxException, scrollState)
@@ -210,6 +215,8 @@ fun EditorScreen(
                     )
                 }
             }
+
+            EditHelp()
         }
 
         Column(
@@ -231,15 +238,57 @@ fun EditorScreen(
                         .fillMaxWidth()
                 ) {
                     Box(modifier = Modifier.align(Alignment.Center)) {
-                        OperatorPanel(
-                            parsedScript!!,
-                            settings
-                        )
+                        OperatorPanel(parsedScript!!, settings, save = { content -> save(fileName, content) })
                     }
                 }
 
-                EnableFloatingTool(servicesViewModel, parsedScript!!, settings)
+                EnableFloatingTool(servicesViewModel, parsedScript!!, settings, save = { content -> save(fileName, content) })
             }
+        }
+    }
+}
+
+@Composable
+private fun EditHelp() {
+    var open by remember { mutableStateOf(false) }
+    Surface(tonalElevation = 8.dp) {
+        TextButton(
+            onClick = { open = true },
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Text("轴写法规则")
+            Icon(
+                imageVector = Icons.AutoMirrored.Default.Help,
+                contentDescription = "帮助"
+            )
+        }
+        if (open) {
+            AlertDialog(
+                onDismissRequest = { open = false },
+                confirmButton = {
+                    Button(onClick = { open = false }) {
+                        Text("确认")
+                    }
+                },
+                title = {
+                    Text("轴写法规则")
+                },
+                text = {
+                    Text(
+                        text = "使用空格分隔\n" +
+                                "第1行必须定义队伍，例：1=佩可 2=凯露 3=可可萝\n" +
+                                "其余行定于轴\n" +
+                                "轴时间定义可以在行首定义，也可以在角色名后面括号定义，例：120 佩可 凯露 可可萝(115)\n" +
+                                "auto开ub在角色名前加auto，例：auto凯露 auto可可萝(102)\n" +
+                                "手动目押和boss大招定义，例：佩可押唱名(55) boss大招(50)\n" +
+                                "可在轴末尾定义游戏菜单按钮防滑刀，例：menu(2)\n" +
+                                "可录制自动打轴，录制好的轴会另存为新文件，例：record跳秒125\n" +
+                                "一些有特殊用处的关键字符：auto menu record start stop BUB BossUB Boss大招 () []",
+                        modifier = Modifier.verticalScroll(rememberScrollState()),
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                },
+            )
         }
     }
 }
@@ -248,7 +297,8 @@ fun EditorScreen(
 private fun EnableFloatingTool(
     servicesViewModel: ServicesViewModel,
     parsedScript: ParsedScript,
-    settings: Settings
+    settings: Settings,
+    save: (content: String) -> Unit
 ) {
     val activity = LocalActivity.current as MainActivity
     val isEnabledTool = remember { mutableStateOf(FloatingWindowService.isEnabledTool()) }
@@ -276,7 +326,7 @@ private fun EnableFloatingTool(
                     true,
                     null
                 ) {
-                    OperatorPanel(parsedScript, settings)
+                    OperatorPanel(parsedScript, settings, save)
                 }
                 isEnabledTool.value = true
             }
@@ -306,7 +356,7 @@ private fun EnableFloatingTool(
                     true,
                     null
                 ) {
-                    OperatorPanel(parsedScript.toCompensation(sec), settings)
+                    OperatorPanel(parsedScript.toCompensation(sec), settings, save)
                 }
                 isEnabledTool.value = true
             }

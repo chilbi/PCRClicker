@@ -6,6 +6,8 @@ import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -20,6 +22,7 @@ import com.pcrclicker.viewModels.FileViewModelFactory
 import com.pcrclicker.viewModels.ServicesViewModel
 import com.pcrclicker.viewModels.SettingsViewModel
 import com.pcrclicker.viewModels.SettingsViewModelFactory
+import kotlinx.coroutines.launch
 import kotlinx.serialization.Serializable
 
 @Composable
@@ -36,6 +39,14 @@ fun App(
     )
     settingsViewModel.settings.collectAsState()
     val navController = rememberNavController()
+    val scope = rememberCoroutineScope()
+    val save: (fileName: String, content: String) -> Unit = remember {
+        { fileName, content ->
+            scope.launch {
+                fileViewModel.saveFile("[AutoClick]$fileName", content)
+            }
+        }
+    }
 
     LaunchedEffect(fileNameAndText) {
         if (fileNameAndText != null) {
@@ -79,6 +90,7 @@ fun App(
                     fileViewModel = fileViewModel,
                     servicesViewModel = servicesViewModel,
                     settingsViewModel = settingsViewModel,
+                    save = save,
                     onBack = { navController.popBackStack() }
                 )
             }

@@ -68,9 +68,10 @@ fun TextFile(
         if (!file.exists()) {
             val text = "5=晶 4=白望 3=克 2=狼 1=511\n" +
                     "122 克 晶(121) 狼 511\n" +
-                    "白望(115) auto克(113) 克(110)\n" +
-                    "110 Boss大招 狼(104) 克(100) Boss大招(100)\n" +
-                    "56 auto白望 晶押晶破甲(50) 狼 克(49)\n" +
+                    "白望(115) auto克(113)\n" +
+                    "111 Boss大招 克(110) 狼(104) 克(100)\n" +
+                    "BossUB auto白望(56)\n" +
+                    "50 晶押晶破甲 狼 克(49)\n" +
                     "测试轴用后面不打了 menu(2)"
             fileViewModel.saveFile("test.txt", text)
         }

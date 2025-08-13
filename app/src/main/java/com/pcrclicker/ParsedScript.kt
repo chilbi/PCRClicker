@@ -1,5 +1,7 @@
 package com.pcrclicker
 
+import android.os.SystemClock
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 
@@ -8,12 +10,17 @@ class ParsedScript(
     val lines: List<List<Operate>>,
     val startSec: Int = 90
 ) {
-    private val lineIndex = MutableStateFlow(0)
-    private val operateIndex = MutableStateFlow(0)
+    private val recordBuilder = StringBuilder()
+    private var recordMessage = ""
+    private var lastClickTime = 0L
+    private var delayOn = 0
+    private var delayOff = 0
+    private var autoSpeed = false
+    private var lineIndex = 0
+    private var operateIndex = 0
+    private var currentLine = lines[lineIndex]
 
-    private val currentLine = MutableStateFlow(lines[lineIndex.value])
-
-    private val _currentOperate = MutableStateFlow(currentLine.value[operateIndex.value])
+    private val _currentOperate = MutableStateFlow(currentLine[operateIndex])
     val currentOperate= _currentOperate.asStateFlow()
 
     private val _summary = MutableStateFlow(getSummary())
@@ -22,21 +29,27 @@ class ParsedScript(
     private val _isOn = MutableStateFlow(false)
     val isOn = _isOn.asStateFlow()
 
-    fun isFirstLine() = lineIndex.value <= 0
-    fun isLastLine() = lineIndex.value >= lines.size - 1
-    fun isStart()= lineIndex.value <= 0 && operateIndex.value <= 0
-    fun isEnd() = lineIndex.value >= lines.size - 1 && operateIndex.value >= currentLine.value.size - 1
+    private val _recording = MutableStateFlow(false)
+    val recording = _recording.asStateFlow()
+
+    private val _autoClick = MutableStateFlow(false)
+    val autoClick = _autoClick.asStateFlow()
+
+    fun isFirstLine() = lineIndex <= 0
+    fun isLastLine() = lineIndex >= lines.size - 1
+    fun isStart()= lineIndex <= 0 && operateIndex <= 0
+    fun isEnd() = lineIndex >= lines.size - 1 && operateIndex >= currentLine.size - 1
 
     fun nextOperate() {
         if (!isEnd()) {
-            operateIndex.value += 1
-            if (operateIndex.value < currentLine.value.size) {
-                _currentOperate.value = currentLine.value[operateIndex.value]
+            operateIndex += 1
+            if (operateIndex < currentLine.size) {
+                _currentOperate.value = currentLine[operateIndex]
             } else {
-                lineIndex.value += 1
-                currentLine.value = lines[lineIndex.value]
-                operateIndex.value = 0
-                _currentOperate.value = currentLine.value[operateIndex.value]
+                lineIndex += 1
+                currentLine = lines[lineIndex]
+                operateIndex = 0
+                _currentOperate.value = currentLine[operateIndex]
             }
             _summary.value = getSummary()
             _isOn.value = false
@@ -45,14 +58,14 @@ class ParsedScript(
 
     fun prevOperate() {
         if (!isStart()) {
-            operateIndex.value -= 1
-            if (operateIndex.value > -1) {
-                _currentOperate.value = currentLine.value[operateIndex.value]
+            operateIndex -= 1
+            if (operateIndex > -1) {
+                _currentOperate.value = currentLine[operateIndex]
             } else {
-                lineIndex.value -= 1
-                currentLine.value = lines[lineIndex.value]
-                operateIndex.value = currentLine.value.size - 1
-                _currentOperate.value = currentLine.value[operateIndex.value]
+                lineIndex -= 1
+                currentLine = lines[lineIndex]
+                operateIndex = currentLine.size - 1
+                _currentOperate.value = currentLine[operateIndex]
             }
             _summary.value = getSummary()
             _isOn.value = false
@@ -61,10 +74,10 @@ class ParsedScript(
 
     fun nextLine() {
         if (!isLastLine()) {
-            lineIndex.value += 1
-            currentLine.value = lines[lineIndex.value]
-            operateIndex.value = 0
-            _currentOperate.value = currentLine.value[operateIndex.value]
+            lineIndex += 1
+            currentLine = lines[lineIndex]
+            operateIndex = 0
+            _currentOperate.value = currentLine[operateIndex]
             _summary.value = getSummary()
             _isOn.value = false
         }
@@ -72,10 +85,10 @@ class ParsedScript(
 
     fun prevLine() {
         if (!isFirstLine()) {
-            lineIndex.value -= 1
-            currentLine.value = lines[lineIndex.value]
-            operateIndex.value = 0
-            _currentOperate.value = currentLine.value[operateIndex.value]
+            lineIndex -= 1
+            currentLine = lines[lineIndex]
+            operateIndex = 0
+            _currentOperate.value = currentLine[operateIndex]
             _summary.value = getSummary()
             _isOn.value = false
         }
@@ -83,36 +96,156 @@ class ParsedScript(
 
     fun restart() {
         if (!isStart() || _isOn.value) {
-            lineIndex.value = 0
-            currentLine.value = lines[lineIndex.value]
-            operateIndex.value = 0
-            _currentOperate.value = currentLine.value[operateIndex.value]
+            lineIndex = 0
+            currentLine = lines[lineIndex]
+            operateIndex = 0
+            _currentOperate.value = currentLine[operateIndex]
             _summary.value = getSummary()
             _isOn.value = false
         }
     }
 
-    fun handleClickOperate(settings: Settings) {
+    suspend fun handleClickOperate(settings: Settings, save: (content: String) -> Unit) {
         val operate = _currentOperate.value
         if (operate is Operate.Click) {
-            val position = operate.type.getPosition(settings)
-            AutoClickService.getInstance()?.performClick(position.x, position.y)
+            operate.type.getPosition(settings).performClick()
+            if (_recording.value) {
+                val currentTime = System.currentTimeMillis()
+                val timeDiff = (currentTime - lastClickTime).toInt()
+                lastClickTime = currentTime
+                if (_isOn.value) {
+                    delayOff = timeDiff
+                    if (operateIndex <= 0) {
+                        recordBuilder.append("\n${operate.sec.toNumMinute()} ${operate.getText(team)}")
+                    } else {
+                        recordBuilder.append(" ${operate.getText(team)}")
+                        if (operate.sec != currentLine[operateIndex - 1].sec) {
+                            recordBuilder.append("(${operate.sec.toNumMinute()})")
+                        }
+                    }
+                    recordBuilder.append("[$delayOn,$delayOff]")
+                    delayOn = 0
+                    delayOff = 0
+                    if (isEnd()) {
+                        stopRecord(settings, save)
+                    }
+                } else {
+                    delayOn = timeDiff
+                    if (!autoSpeed) {
+                        settings.speedPosition.performClick(60L)
+                        autoSpeed = true
+                    }
+                }
+            }
         }
         if (_isOn.value) {
             nextOperate()
+            if (_recording.value) {
+                requireStopRecord(settings, save)
+            }
         } else {
             _isOn.value = true
         }
     }
 
     fun handleClickSpeed(settings: Settings) {
-        val position = settings.speedPosition
-        AutoClickService.getInstance()?.performClick(position.x, position.y)
+        settings.speedPosition.performClick()
     }
 
     fun handleClickMenu(settings: Settings) {
-        val position = settings.menuPosition
-        AutoClickService.getInstance()?.performClick(position.x, position.y)
+        settings.menuPosition.performClick()
+    }
+
+    suspend fun startAutoClick(settings: Settings) {
+        _autoClick.value = true
+        autoSpeed = false
+        nextOperate()
+        //必须处于游戏暂停界面
+        settings.blankPosition.performClick()
+        autoClick(settings)
+    }
+
+    suspend fun stopAutoClick(settings: Settings) {
+        if (_autoClick.value) {
+            //关加速
+            if (autoSpeed) {
+                delay(60L)
+                settings.speedPosition.performClick()
+                autoSpeed = false
+                delay(60L)
+            }
+            //暂停游戏
+            settings.menuPosition.performClick()
+            _autoClick.value = false
+        } else {
+            nextOperate()
+        }
+    }
+
+    suspend fun startRecord(settings: Settings, save: (content: String) -> Unit) {
+        _recording.value = true
+        autoSpeed = false
+        val recordOperate = currentOperate.value
+        recordMessage = recordOperate.message
+        recordBuilder.clear()
+        recordBuilder.append(team.joinToString(" ") { "${it.num}=${it.name}" })
+        recordBuilder.append("\n")
+        if (lineIndex > 0) {
+            for (i in 0 until lineIndex) {
+                recordBuilder.append(operateListToString(lines[i]))
+                recordBuilder.append("\n")
+            }
+        }
+        if (operateIndex > 0) {
+            val operates = currentLine.take(operateIndex)
+            recordBuilder.append(operateListToString(operates))
+        } else {
+            recordBuilder.append(recordOperate.sec.toNumMinute())
+        }
+        recordBuilder.append(" start$recordMessage")
+        nextOperate()
+        if (!requireStopRecord(settings, save)) {
+            //必须处于游戏暂停界面
+            settings.blankPosition.performClick()
+            lastClickTime = System.currentTimeMillis()
+        }
+    }
+
+    suspend fun stopRecord(settings: Settings, save: (content: String) -> Unit) {
+        //关加速
+        if (autoSpeed) {
+            delay(60L)
+            settings.speedPosition.performClick()
+            autoSpeed = false
+            delay(60L)
+        }
+        //暂停游戏
+        settings.menuPosition.performClick()
+        _recording.value = false
+        val countdown = Countdown(currentLine[0].sec)
+        if (operateIndex <= 0) {
+            recordBuilder.append("\n${countdown.sec.toNumMinute()}")
+        } else {
+            countdown.sec = currentLine[operateIndex - 1].sec
+        }
+        recordBuilder.append(" stop$recordMessage")
+        if (operateIndex < currentLine.size) {
+            for (i in operateIndex until currentLine.size) {
+                recordBuilder.append(" ")
+                recordBuilder.append(operateToString(currentLine[i], countdown))
+            }
+        }
+        if (lineIndex < lines.size - 1) {
+            for (i in lineIndex + 1 until lines.size) {
+                recordBuilder.append("\n")
+                recordBuilder.append(operateListToString(lines[i]))
+            }
+        }
+        save(recordBuilder.toString())
+        recordMessage = ""
+        delayOn = 0
+        delayOff = 0
+        recordBuilder.clear()
     }
 
     fun toCompensation(sec: Int): ParsedScript {
@@ -121,15 +254,17 @@ class ParsedScript(
         for (operates in lines) {
             val newOperates = mutableListOf<Operate>()
             for (operate in operates) {
-                if (operate is Operate.Click) {
-                    val newSec = operate.sec - diff
-                    if (newSec < 0) break
-                    newOperates.add(operate.copy(sec = newSec))
-                } else if (operate is Operate.Confirm) {
-                    val newSec = operate.sec - diff
-                    if (newSec < 0) break
-                    newOperates.add(operate.copy(sec = newSec))
-                }
+                val newSec = operate.sec - diff
+                if (newSec < 0) break
+                newOperates.add(
+                    when (operate) {
+                        is Operate.Click -> operate.copy(sec = newSec)
+                        is Operate.Confirm -> operate.copy(sec = newSec)
+                        is Operate.Record -> operate.copy(sec = newSec)
+                        is Operate.Start -> operate.copy(sec = newSec)
+                        is Operate.Stop -> operate.copy(sec = newSec)
+                    }
+                )
             }
             if (newOperates.isEmpty()) break
             newLines.add(newOperates)
@@ -137,41 +272,117 @@ class ParsedScript(
         return ParsedScript(team, newLines, sec)
     }
 
+    private suspend fun autoClick(settings: Settings) {
+        val operate = currentOperate.value
+        when (operate) {
+            is Operate.Stop -> {
+                stopAutoClick(settings)
+            }
+            is Operate.Click -> {
+                val delayTime = if (_isOn.value) operate.delayOff else operate.delayOn
+                delay((delayTime as Int).toLong())
+                handleClickOperate(settings) {}
+                if (!autoSpeed) {
+                    settings.speedPosition.performClick(60L)
+                    autoSpeed = true
+                }
+                if (_autoClick.value) {
+                    autoClick(settings)
+                }
+            }
+            else -> {
+                nextOperate()
+                autoClick(settings)
+            }
+        }
+    }
+
+    private suspend fun requireStopRecord(settings: Settings, save: (content: String) -> Unit): Boolean {
+        var stop = false
+        val operate = _currentOperate.value
+        if (operate !is Operate.Click || operate.type == ClickType.MENU) {
+            stop = true
+        }
+        if (isBossUb(operate)) {
+            stop = false
+        }
+        if (stop) {
+            stopRecord(settings, save)
+        }
+        return stop
+    }
+
+    private fun isBossUb(operate: Operate): Boolean {
+        if (operate is Operate.Confirm) {
+            if (arrayOf("boss大招", "bossub", "bub").contains(operate.message.lowercase())) {
+                return true
+            }
+        }
+        return false
+    }
+
+    private fun operateListToString(operates: List<Operate>): String {
+        return buildString {
+            val countdown = Countdown(operates[0].sec)
+            append(countdown.sec.toNumMinute())
+            for (operate in operates) {
+                append(" ")
+                append(operateToString(operate, countdown))
+            }
+        }
+    }
+
+    private fun operateToString(operate: Operate, countdown: Countdown): String {
+        return buildString {
+            append(operate.getText(team))
+            val currSec = operate.sec
+            if (currSec != countdown.sec) {
+                append("(${currSec.toNumMinute()})")
+                countdown.sec = currSec
+            }
+            if (operate is Operate.Click) {
+                if (operate.delayOn != null && operate.delayOff != null) {
+                    append("[${operate.delayOn},${operate.delayOff}]")
+                }
+            }
+        }
+    }
+
     private fun getSummary(): List<String> {
-        val current = _currentOperate.value.getName(team)
-        val currIndex = operateIndex.value
-        val currLine = currentLine.value
+        val current = _currentOperate.value.getText(team)
+        val currIndex = operateIndex
+        val currLine = currentLine
         var prev: String
         if (isFirstLine()) {
             prev = "${startSec.toMinute()} 开始\n"
         } else {
-            val prevLine = lines[lineIndex.value - 1]
-            prev = prevLine[0].getSeconds().toMinute()
+            val prevLine = lines[lineIndex - 1]
+            prev = prevLine[0].sec.toMinute()
             for (i in 0 until prevLine.size) {
-                prev += " " + prevLine[i].getName(team)
+                prev += " " + prevLine[i].getText(team)
             }
             prev += "\n"
         }
-        prev += currLine[0].getSeconds().toMinute() + " "
+        prev += currLine[0].sec.toMinute() + " "
         var next = ""
         if (currIndex > 0) {
             for (i in 0 until currIndex) {
-                prev += currLine[i].getName(team) + " "
+                prev += currLine[i].getText(team) + " "
             }
         }
         if (currIndex < currLine.size - 1) {
             for (i in (currIndex + 1) until currLine.size) {
-                next += " " + currLine[i].getName(team)
+                next += " " + currLine[i].getText(team)
             }
         }
         next += "\n"
         if (isLastLine()) {
             next += "0 结束"
         } else {
-            val nextLine = lines[lineIndex.value + 1]
-            next += nextLine[0].getSeconds().toMinute()
+            val nextLine = lines[lineIndex + 1]
+            next += nextLine[0].sec.toMinute()
             for (i in 0 until nextLine.size) {
-                next += " " + nextLine[i].getName(team)
+                next += " " + nextLine[i].getText(team)
             }
         }
 
@@ -198,7 +409,7 @@ enum class ClickType {
         }
     }
 
-    fun getButtonName(team: List<Chara>): String {
+    fun getText(team: List<Chara>): String {
         return when (this) {
             SET1 -> team.find { it.num == 1 }?.name ?: "?"
             SET2 -> team.find { it.num == 2 }?.name ?: "?"
@@ -210,7 +421,7 @@ enum class ClickType {
             AUTO3 -> "auto" + (team.find { it.num == 3 }?.name ?: "?")
             AUTO4 -> "auto" + (team.find { it.num == 4 }?.name ?: "?")
             AUTO5 -> "auto" + (team.find { it.num == 5 }?.name ?: "?")
-            else -> "游戏菜单"
+            MENU -> "menu"
         }
     }
 
@@ -224,20 +435,24 @@ enum class ClickType {
 }
 
 sealed class Operate {
-    data class Click(val sec: Int, val type: ClickType) : Operate()
-    data class Confirm(val sec: Int, val message: String) : Operate()
+    abstract val sec: Int
+    abstract val message: String
 
-    fun getName(team: List<Chara>): String {
-        return when (this) {
-            is Click -> this.type.getButtonName(team)
-            is Confirm -> this.message
-        }
+    data class Click(override val sec: Int, val type: ClickType, val delayOn: Int?, val delayOff: Int?) : Operate() {
+        override val message: String = ""
     }
+    data class Confirm(override val sec: Int, override val message: String) : Operate()
+    data class Record(override val sec: Int, override val message: String) : Operate()
+    data class Start(override val sec: Int, override val message: String) : Operate()
+    data class Stop(override val sec: Int, override val message: String) : Operate()
 
-    fun getSeconds(): Int {
+    fun getText(team: List<Chara>): String {
         return when (this) {
-            is Click -> this.sec
-            is Confirm -> this.sec
+            is Click -> this.type.getText(team)
+            is Confirm -> this.message
+            is Record -> "record${this.message}"
+            is Start -> "start${this.message}"
+            is Stop -> "stop${this.message}"
         }
     }
 }
@@ -334,19 +549,47 @@ fun analyzeSyntax(textLines: List<String>): ParsedScript? {
 }
 
 private val nameSecPattern = Regex("""(\S+)\((\d+)\)$""")
+private val delayPattern = Regex("""(\S+)\[(\d+),(\d+)]$""")
 
 @Throws(SyntaxException::class)
 private fun analyzeOperateDefine(operateDefine: String, lineNum: Int, countdown: Countdown, team: List<Chara>): Operate {
     var defineText = operateDefine
+
+    if (defineText == "menu") {
+        return Operate.Click(countdown.sec, ClickType.MENU, null, null)
+    }
+
+    if (defineText.startsWith("record")) {
+        return Operate.Record(countdown.sec, defineText.substring(6))
+    }
+
+    if (defineText.startsWith("start")) {
+        return Operate.Start(countdown.sec, defineText.substring(5))
+    }
+
+    if (defineText.startsWith("stop")) {
+        return Operate.Stop(countdown.sec, defineText.substring(4))
+    }
+
     var isAuto = false
-    if (operateDefine.startsWith("auto")) {
+    if (defineText.startsWith("auto")) {
         defineText = operateDefine.substring(4)
         isAuto = true
     }
 
-    val matchResult = nameSecPattern.find(defineText)
-    if (matchResult != null) {//匹配 name(sec)
-        val (noSecText, secStr) = matchResult.destructured
+    var delayOn: Int? = null
+    var delayOff: Int? = null
+    val delayMatchResult = delayPattern.find(defineText)
+    if (delayMatchResult != null) {
+        val (noDelayText, delayOnStr, delayOffStr) = delayMatchResult.destructured
+        delayOn = delayOnStr.toIntOrNull()
+        delayOff = delayOffStr.toIntOrNull()
+        defineText = noDelayText
+    }
+
+    val nameSecMatchResult = nameSecPattern.find(defineText)
+    if (nameSecMatchResult != null) {//匹配 name(sec)
+        val (noSecText, secStr) = nameSecMatchResult.destructured
         val sec = secStr.toSec(lineNum)
         if (sec != null) {
             if (sec > countdown.sec) {
@@ -361,11 +604,10 @@ private fun analyzeOperateDefine(operateDefine: String, lineNum: Int, countdown:
     if (findChara != null) {
         return Operate.Click(
             countdown.sec,
-            if (isAuto) getAUTOType(findChara.num) else getSETType(findChara.num)
+            if (isAuto) getAUTOType(findChara.num) else getSETType(findChara.num),
+            delayOn,
+            delayOff
         )
-    }
-    if (defineText == "menu") {
-        return Operate.Click(countdown.sec, ClickType.MENU)
     }
     return Operate.Confirm(countdown.sec, defineText)
 }
@@ -425,6 +667,7 @@ private fun Int.toSec(lineNum: Int): Int {
         this
     }
 }
+
 fun Int.toMinute(): String {
     return if (this > 59) {
         val sec = this - 60
@@ -432,4 +675,17 @@ fun Int.toMinute(): String {
     } else {
         this.toString()
     }
+}
+
+fun Int.toNumMinute(): String {
+    return if (this > 59) {
+        val sec = this - 60
+        "1${if (sec > 9) "" else "0"}$sec"
+    } else {
+        this.toString()
+    }
+}
+
+fun Position.performClick(startTime: Long = 0) {
+    AutoClickService.getInstance()?.performClick(x, y, startTime)
 }

@@ -26,6 +26,7 @@ import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.SouthEast
 import androidx.compose.material3.Badge
 import androidx.compose.material3.BadgedBox
+import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -38,6 +39,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -52,11 +54,13 @@ import com.pcrclicker.Operate
 import com.pcrclicker.ParsedScript
 import com.pcrclicker.Settings
 import com.pcrclicker.toMinute
+import kotlinx.coroutines.launch
 
 @Composable
 fun OperatorPanel(
     parsedScript: ParsedScript,
-    settings: Settings
+    settings: Settings,
+    save: (content: String) -> Unit
 ) {
     val density = LocalDensity.current
     val width = remember { mutableStateOf(230.dp) }
@@ -65,6 +69,9 @@ fun OperatorPanel(
     val currentOperate = parsedScript.currentOperate.collectAsState().value
     val summary = parsedScript.summary.collectAsState().value
     val isOn = parsedScript.isOn.collectAsState().value
+    val recording = parsedScript.recording.collectAsState().value
+    val autoClick = parsedScript.autoClick.collectAsState().value
+    val scope = rememberCoroutineScope()
 
     LaunchedEffect(currentOperate) {
         confirmRestart.value = false
@@ -112,7 +119,7 @@ fun OperatorPanel(
                     },
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(4.dp, 0.dp, 32.dp, 4.dp)
+                        .padding(4.dp, 4.dp, 32.dp, 4.dp)
                         .background(MaterialTheme.colorScheme.surface, MaterialTheme.shapes.small)
                         .padding(4.dp, 2.dp),
                     color = MaterialTheme.colorScheme.onSurface,
@@ -122,159 +129,206 @@ fun OperatorPanel(
                 Row(
                     modifier = Modifier.padding(4.dp)
                 ) {
-                    MiniButton(
-                        onClick = { parsedScript.handleClickMenu(settings) },
-                        text = "游戏菜单"
-                    )
-                    Spacer(modifier = Modifier.width(4.dp))
-                    MiniButton(
-                        onClick = { parsedScript.handleClickSpeed(settings) },
-                        text = "游戏加速"
-                    )
-                    Spacer(modifier = Modifier.width(4.dp))
-                    BadgedBox(
-                        badge = {
-                            if (confirmRestart.value) {
-                                Badge(
-                                    modifier = Modifier.offset((-8).dp, (-4).dp),
-                                    containerColor = MaterialTheme.colorScheme.secondary
-                                ) {
-                                    Text("确定")
-                                }
-                            }
-                        }
-                    ) {
+                    if (recording) {
                         MiniButton(
-                            onClick = {
+                            onClick = { scope.launch { parsedScript.stopRecord(settings, save) } },
+                            text = "停止录制并另存为"
+                        )
+                    } else if (autoClick) {
+                        MiniButton(
+                            onClick = { scope.launch { parsedScript.stopAutoClick(settings) } },
+                            text = "停止自动打轴"
+                        )
+                    } else {
+                        MiniButton(
+                            onClick = { parsedScript.handleClickMenu(settings) },
+                            text = "游戏菜单"
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        MiniButton(
+                            onClick = { parsedScript.handleClickSpeed(settings) },
+                            text = "游戏加速"
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        BadgedBox(
+                            badge = {
                                 if (confirmRestart.value) {
-                                    parsedScript.restart()
-                                    confirmRestart.value = false
-                                } else {
-                                    confirmRestart.value = true
-                                }
-                            },
-                            text = "重新开始"
-                        )
-                    }
-                }
-
-                Row(
-                    modifier = Modifier.padding(4.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    if (currentOperate is Operate.Click) {
-                        SecDisplay(currentOperate.sec)
-                        BadgedBox(
-                            badge = {
-                                if (isOn) {
                                     Badge(
-                                        modifier = Modifier.offset((-8).dp, 4.dp),
-                                        containerColor = MaterialTheme.colorScheme.primary
+                                        modifier = Modifier.offset((-8).dp, (-4).dp),
+                                        containerColor = MaterialTheme.colorScheme.secondary
                                     ) {
-                                        Text(currentOperate.type.getBadgeText())
+                                        Text("确定")
                                     }
                                 }
                             }
                         ) {
-                            OutlinedButton(
-                                onClick = { parsedScript.handleClickOperate(settings) },
-                                colors = ButtonDefaults.outlinedButtonColors(
-                                    containerColor = MaterialTheme.colorScheme.surface,
-                                    contentColor = MaterialTheme.colorScheme.onSurface
-                                ),
-                                border = BorderStroke(
-                                    2.dp,
-                                    if (isOn) MaterialTheme.colorScheme.primary
-                                    else MaterialTheme.colorScheme.outline
-                                )
-                            ) {
-                                Text(currentOperate.type.getButtonName(parsedScript.team))
-                            }
+                            MiniButton(
+                                onClick = {
+                                    if (confirmRestart.value) {
+                                        parsedScript.restart()
+                                        confirmRestart.value = false
+                                    } else {
+                                        confirmRestart.value = true
+                                    }
+                                },
+                                text = "重新开始"
+                            )
                         }
-                    } else if (currentOperate is Operate.Confirm) {
-                        SecDisplay(currentOperate.sec)
-                        BadgedBox(
-                            badge = {
-                                if (isOn) {
-                                    Badge(
-                                        modifier = Modifier.offset((-8).dp, 4.dp),
-                                        containerColor = MaterialTheme.colorScheme.tertiary
+                    }
+                }
+
+                if (!autoClick) {
+                    Row(
+                        modifier = Modifier.padding(4.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        when (currentOperate) {
+                            is Operate.Click -> {
+                                SecDisplay(currentOperate.sec)
+                                BadgedBox(
+                                    badge = {
+                                        if (isOn) {
+                                            Badge(
+                                                modifier = Modifier.offset((-8).dp, 4.dp),
+                                                containerColor = MaterialTheme.colorScheme.primary
+                                            ) {
+                                                Text(currentOperate.type.getBadgeText())
+                                            }
+                                        }
+                                    }
+                                ) {
+                                    OutlinedButton(
+                                        onClick = { scope.launch { parsedScript.handleClickOperate(settings, save) } },
+                                        colors = ButtonDefaults.outlinedButtonColors(
+                                            containerColor = MaterialTheme.colorScheme.surface,
+                                            contentColor = MaterialTheme.colorScheme.onSurface
+                                        ),
+                                        border = BorderStroke(
+                                            2.dp,
+                                            if (isOn) MaterialTheme.colorScheme.primary
+                                            else MaterialTheme.colorScheme.outline
+                                        )
                                     ) {
-                                        Text("OK")
+                                        Text(currentOperate.type.getText(parsedScript.team))
                                     }
                                 }
                             }
-                        ) {
-                            OutlinedButton(
-                                onClick = { parsedScript.handleClickOperate(settings) },
-                                colors = ButtonDefaults.outlinedButtonColors(
-                                    containerColor = MaterialTheme.colorScheme.tertiaryContainer,
-                                    contentColor = MaterialTheme.colorScheme.onTertiaryContainer
-                                ),
-                                border = BorderStroke(
-                                    2.dp,
-                                    if (isOn) MaterialTheme.colorScheme.tertiary
-                                    else MaterialTheme.colorScheme.outline
-                                )
-                            ) {
-                                Text(
-                                    text = currentOperate.message
-                                )
+
+                            is Operate.Confirm -> {
+                                SecDisplay(currentOperate.sec)
+                                BadgedBox(
+                                    badge = {
+                                        if (isOn) {
+                                            Badge(
+                                                modifier = Modifier.offset((-8).dp, 4.dp),
+                                                containerColor = MaterialTheme.colorScheme.tertiary
+                                            ) {
+                                                Text("OK")
+                                            }
+                                        }
+                                    }
+                                ) {
+                                    OutlinedButton(
+                                        onClick = { scope.launch { parsedScript.handleClickOperate(settings, save) } },
+                                        colors = ButtonDefaults.outlinedButtonColors(
+                                            containerColor = MaterialTheme.colorScheme.tertiaryContainer,
+                                            contentColor = MaterialTheme.colorScheme.onTertiaryContainer
+                                        ),
+                                        border = BorderStroke(
+                                            2.dp,
+                                            if (isOn) MaterialTheme.colorScheme.tertiary
+                                            else MaterialTheme.colorScheme.outline
+                                        )
+                                    ) {
+                                        Text(
+                                            text = currentOperate.message
+                                        )
+                                    }
+                                }
+                            }
+
+                            is Operate.Record -> {
+                                SecDisplay(currentOperate.sec)
+                                Button(onClick = { scope.launch { parsedScript.startRecord(settings, save) } }) {
+                                    Text(
+                                        text = "record" + currentOperate.message
+                                    )
+                                }
+                            }
+
+                            is Operate.Start -> {
+                                SecDisplay(currentOperate.sec)
+                                Button(onClick = { scope.launch { parsedScript.startAutoClick(settings) } }) {
+                                    Text(
+                                        text = "start" + currentOperate.message
+                                    )
+                                }
+                            }
+
+                            is Operate.Stop -> {
+                                SecDisplay(currentOperate.sec)
+                                Button(onClick = { scope.launch { parsedScript.stopAutoClick(settings) } }) {
+                                    Text(
+                                        text = "stop" + currentOperate.message
+                                    )
+                                }
                             }
                         }
                     }
                 }
 
-                Row(
-                    modifier = Modifier.padding(4.dp),
-                    horizontalArrangement = Arrangement.spacedBy(4.dp)
-                ) {
-                    IconButton(
-                        onClick = { parsedScript.prevLine() },
-                        modifier = Modifier.size(28.dp),
-                        enabled = !parsedScript.isFirstLine(),
-                        colors = iconButtonColors
+                if (!(recording || autoClick)) {
+                    Row(
+                        modifier = Modifier.padding(4.dp),
+                        horizontalArrangement = Arrangement.spacedBy(4.dp)
                     ) {
-                        Icon(
-                            imageVector = Icons.Default.KeyboardArrowUp,
-                            contentDescription = "上一行"
-                        )
-                    }
+                        IconButton(
+                            onClick = { parsedScript.prevLine() },
+                            modifier = Modifier.size(28.dp),
+                            enabled = !parsedScript.isFirstLine(),
+                            colors = iconButtonColors
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.KeyboardArrowUp,
+                                contentDescription = "上一行"
+                            )
+                        }
 
-                    IconButton(
-                        onClick = { parsedScript.prevOperate() },
-                        modifier = Modifier.size(28.dp),
-                        enabled = !parsedScript.isStart(),
-                        colors = iconButtonColors
-                    ) {
-                        Icon(
-                            imageVector = Icons.AutoMirrored.Default.KeyboardArrowLeft,
-                            contentDescription = "上一个"
-                        )
-                    }
+                        IconButton(
+                            onClick = { parsedScript.prevOperate() },
+                            modifier = Modifier.size(28.dp),
+                            enabled = !parsedScript.isStart(),
+                            colors = iconButtonColors
+                        ) {
+                            Icon(
+                                imageVector = Icons.AutoMirrored.Default.KeyboardArrowLeft,
+                                contentDescription = "上一个"
+                            )
+                        }
 
-                    IconButton(
-                        onClick = { parsedScript.nextOperate() },
-                        modifier = Modifier.size(28.dp),
-                        enabled = !parsedScript.isEnd(),
-                        colors = iconButtonColors
-                    ) {
-                        Icon(
-                            imageVector = Icons.AutoMirrored.Default.KeyboardArrowRight,
-                            contentDescription = "下一个"
-                        )
-                    }
+                        IconButton(
+                            onClick = { parsedScript.nextOperate() },
+                            modifier = Modifier.size(28.dp),
+                            enabled = !parsedScript.isEnd(),
+                            colors = iconButtonColors
+                        ) {
+                            Icon(
+                                imageVector = Icons.AutoMirrored.Default.KeyboardArrowRight,
+                                contentDescription = "下一个"
+                            )
+                        }
 
-                    IconButton(
-                        onClick = { parsedScript.nextLine() },
-                        modifier = Modifier.size(28.dp),
-                        enabled = !parsedScript.isLastLine(),
-                        colors = iconButtonColors
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.KeyboardArrowDown,
-                            contentDescription = "下一行"
-                        )
+                        IconButton(
+                            onClick = { parsedScript.nextLine() },
+                            modifier = Modifier.size(28.dp),
+                            enabled = !parsedScript.isLastLine(),
+                            colors = iconButtonColors
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.KeyboardArrowDown,
+                                contentDescription = "下一行"
+                            )
+                        }
                     }
                 }
             }

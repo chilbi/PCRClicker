@@ -7,3 +7,5 @@
 - auto开ub在角色名前加auto，例：auto凯露 auto可可萝(102)
 - 手动目押和boss大招定义，例：佩可押唱名(55) boss大招(50)
 - 可在轴末尾定义游戏菜单按钮防滑刀，例：menu(2)
+- 可录制自动打轴，录制好的轴会另存为新文件，例：record跳秒125
+- 一些有特殊用处的关键字符：auto menu record start stop BUB BossUB Boss大招 () []
